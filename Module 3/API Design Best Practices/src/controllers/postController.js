@@ -2,14 +2,14 @@ const service = require('../services/postService');
 const http = require('../utils/http');
 
 function listPosts(req, res) {
-  const rows = service.listPosts(req.query);
-  return http.sendList(res, rows);
+  const result = service.listPosts(req.query);
+  return http.sendList(res, result.data, result.meta);
 }
 
 function getPost(req, res) {
   const post = service.getPost(req.params.id);
   if (!post) {
-    return http.sendError(res, 404, { message: 'post missing' });
+    return http.sendError(res, 404, 'Post not found');
   }
   return http.sendOk(res, post);
 }
@@ -21,15 +21,14 @@ function createPost(req, res) {
 
 function likePost(req, res) {
   const post = service.likePost(req.params.id);
-  return http.sendOk(res, { ok: true, likes: post.likes });
+  if (!post) {
+    return http.sendError(res, 404, 'Post not found');
+  }
+  return http.sendOk(res, post);
 }
 
 function explode(req, res) {
-  try {
-    service.explode();
-  } catch (err) {
-    return http.sendError(res, 500, { error: err.message, stack: err.debug || err.stack });
-  }
+  service.explode();
 }
 
 module.exports = {

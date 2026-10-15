@@ -1,8 +1,8 @@
 /**
  * logger middleware  [mount GLOBALLY in app.js]
  *
- * TODO: export a middleware function (req, res, next) that logs the request
- *       METHOD, PATH, and STATUS.
+ * Export a middleware function (req, res, next) that logs the request METHOD,
+ * PATH, and STATUS.
  *
  * The status code is only known once the response is finished, so register a
  * callback on the response 'finish' event and log there:
@@ -14,5 +14,11 @@
  */
 
 module.exports = function logger(req, res, next) {
-  // TODO: register res.on('finish', ...) to log method, path, status, then next().
+  const path = req.path;
+
+  res.on('finish', () => {
+    const id = req.id ? `[${req.id}] ` : '';
+    console.log(`${id}${req.method} ${path} ${res.statusCode}`);
+  });
+  next();
 };

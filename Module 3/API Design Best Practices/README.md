@@ -54,6 +54,14 @@ npm start
 
 Submit PR link.
 
+## Implemented Contract
+
+- `GET /posts?page=1&limit=10` returns `{ success, data, meta }`; `limit` is capped at 100.
+- `GET /posts/:id` returns one post in the standard success envelope.
+- `POST /posts` creates a post and returns it with status `201`.
+- `POST /posts/:id/likes` records a like using a resource-oriented route.
+- Errors use `{ success: false, error: { message } }`; internal failures return a generic message.
+
 ## Suggested Manual Checks
 
 After refactor, manually verify:
