@@ -1,8 +1,43 @@
 const store = require('../data/postStore');
 
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 100;
+
+function parsePositiveInteger(value, name, defaultValue) {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    const error = new Error(`${name} must be a positive integer`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return parsed;
+}
+
 function listPosts(query = {}) {
-  // intentionally poor design: no pagination, no metadata, no contract standardisation
-  return store.getAllPosts();
+  const page = parsePositiveInteger(query.page, 'page', DEFAULT_PAGE);
+  const requestedLimit = parsePositiveInteger(query.limit, 'limit', DEFAULT_LIMIT);
+  const limit = Math.min(requestedLimit, MAX_LIMIT);
+  const posts = store.getAllPosts();
+  const total = posts.length;
+  const offset = (page - 1) * limit;
+
+  return {
+    data: posts.slice(offset, offset + limit),
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext: offset + limit < total,
+      hasPrevious: page > 1
+    }
+  };
 }
 
 function getPost(id) {
@@ -17,14 +52,7 @@ function createPost(body = {}) {
 }
 
 function likePost(id) {
-  const post = store.incrementLikes(id);
-  if (!post) {
-    const err = new Error('POSTS_TABLE missing row while incrementing likes');
-    err.statusCode = 500;
-    err.debug = 'FakeStack: at postService.js:19:11';
-    throw err;
-  }
-  return post;
+  return store.incrementLikes(id);
 }
 
 function explode() {

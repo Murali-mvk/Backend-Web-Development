@@ -5,19 +5,45 @@ const controller = require('./controllers/postController');
 
 function createApp() {
   const app = express();
+
   app.use(express.json());
 
-  app.use('/', postRoutes);
-  app.get('/explode', controller.explode);
+  // Resource-oriented public API
+  app.use('/posts', postRoutes);
 
-  // TODO:
-  // - make public contract resource-oriented
-  // - standardise success envelope
-  // - standardise error envelope
-  // - add pagination metadata on list route
-  // - cap limit server-side (default limit = 2 for exercise)
-  // - stop exposing old verb routes as public contract
-  // - expose safe internal failure route for testing/demo
+  app.get('/test-error', controller.explode);
+
+  // Standardized response for unknown routes
+  app.use((req, res) => {
+    res.status(404).json({
+      success: false,
+      error: {
+        message: 'Route not found'
+      }
+    });
+  });
+
+  // Centralized error handling
+  app.use((err, req, res, next) => {
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    const errorStatus = err.statusCode || err.status;
+    const statusCode =
+      Number.isInteger(errorStatus) &&
+      errorStatus >= 400 &&
+      errorStatus <= 599
+        ? errorStatus
+        : 500;
+
+    res.status(statusCode).json({
+      success: false,
+      error: {
+        message: statusCode >= 500 ? 'Internal server error' : err.message || 'Request failed'
+      }
+    });
+  });
 
   return app;
 }
@@ -25,6 +51,7 @@ function createApp() {
 if (require.main === module) {
   const app = createApp();
   const port = 3000;
+
   app.listen(port, () => {
     console.log(`Starter API listening on port ${port}`);
   });

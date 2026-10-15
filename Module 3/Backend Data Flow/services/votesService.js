@@ -3,20 +3,35 @@ const votesRepo = require('./../repository/votesRepo');
 const AppError = require('./../utils/AppError');
 
 /**
- * TODO (Domain rule): cast a vote, one per user per post.
- * Implement these guards before writing:
- *   1. The post must exist                 -> AppError('Post not found', 404)
- *   2. The user must not have voted already -> AppError('You have already voted on this post', 409)
- * Only when both pass: return votesRepo.insert(postId, userId).
+ * Cast a vote, allowing only one vote per user per post.
+ *
+ * 1. The post must exist.
+ * 2. The user must not have already voted.
+ * 3. Insert the vote only if both checks pass.
  */
 exports.castVote = async (postId, userId) => {
+  // Check 1: Verify that the post exists
   const post = await postsRepo.findById(postId);
-  if (!post) throw new AppError('Post not found', 404);
 
+  if (!post) {
+    throw new AppError('Post not found', 404);
+  }
+
+  // Check 2: Verify that the user has not already voted
   const existingVote = await votesRepo.find(postId, userId);
-  if (existingVote) throw new AppError('You have already voted on this post', 409);
 
+  if (existingVote) {
+    throw new AppError(
+      'You have already voted on this post',
+      409
+    );
+  }
+
+  // Both checks passed: insert the vote
   return votesRepo.insert(postId, userId);
 };
 
-exports.countFor = async (postId) => votesRepo.countByPost(postId);
+// Return the total number of votes for a post
+exports.countFor = async (postId) => {
+  return votesRepo.countByPost(postId);
+};
