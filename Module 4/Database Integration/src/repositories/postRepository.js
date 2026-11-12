@@ -1,36 +1,77 @@
-const seed = require('../data/postSeed');
+const prisma = require("../config/prisma");
 
-// Starter implementation: same async contract, temporary in-memory storage.
-const posts = seed.map((post) => ({ ...post }));
-let nextId = posts.reduce((max, post) => Math.max(max, post.id), 0) + 1;
+function mapPrismaError(error, fallbackMessage, statusCode) {
+  const mappedError = new Error(fallbackMessage);
+  mappedError.code = error && error.code ? error.code : "UNKNOWN";
+  mappedError.statusCode = statusCode;
+  return mappedError;
+}
 
 async function findAll() {
-  return posts.map((post) => ({ ...post }));
+  return prisma.post.findMany({
+    orderBy: { id: "asc" },
+  });
 }
 
 async function findById(id) {
-  return posts.find((post) => post.id === Number(id)) || null;
+  return prisma.post.findUnique({
+    where: { id: Number(id) },
+  });
 }
 
-async function create(fields) {
-  const post = { id: nextId++, title: fields.title, body: fields.body || '', authorId: fields.authorId };
-  posts.push(post);
-  return { ...post };
+async function create(fields = {}) {
+  try {
+    return await prisma.post.create({
+      data: {
+        title: fields.title,
+        body: fields.body || "",
+        authorId: Number(fields.authorId),
+      },
+    });
+  } catch (error) {
+    if (error.code === "P2003") {
+      throw mapPrismaError(error, "Author not found.", 400);
+    }
+    if (error.code === "P2002") {
+      throw mapPrismaError(error, "A duplicate record already exists.", 409);
+    }
+    throw error;
+  }
 }
 
-async function update(id, patch) {
-  const post = posts.find((candidate) => candidate.id === Number(id));
-  if (!post) return null;
-  if (patch.title !== undefined) post.title = patch.title;
-  if (patch.body !== undefined) post.body = patch.body;
-  return { ...post };
+async function update(id, patch = {}) {
+  try {
+    const data = {};
+    if (patch.title !== undefined) data.title = patch.title;
+    if (patch.body !== undefined) data.body = patch.body;
+
+    return await prisma.post.update({
+      where: { id: Number(id) },
+      data,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      return null;
+    }
+    if (error.code === "P2003") {
+      throw mapPrismaError(error, "Related record not found.", 400);
+    }
+    throw error;
+  }
 }
 
 async function remove(id) {
-  const index = posts.findIndex((post) => post.id === Number(id));
-  if (index === -1) return false;
-  posts.splice(index, 1);
-  return true;
+  try {
+    await prisma.post.delete({
+      where: { id: Number(id) },
+    });
+    return true;
+  } catch (error) {
+    if (error.code === "P2025") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 module.exports = { findAll, findById, create, update, remove };
