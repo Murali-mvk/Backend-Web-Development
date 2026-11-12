@@ -1,240 +1,154 @@
-# LU 51 — Authentication Middleware
+# Express Session Authentication
 
-## What you are building
+A small Express 4 API demonstrating Prisma-backed user lookup, bcrypt password verification, signed HTTP-only cookies, and server-side sessions. Existing protected profile and post examples use the same authentication middleware.
 
-You will implement `requireAuth` — an Express middleware function that guards protected routes using JWT Bearer token authentication.
+## Prerequisites
 
-When a request comes in, `requireAuth` should:
-1. Read the `Authorization` header and extract the Bearer token
-2. Return `401` immediately if the token is missing or the scheme is not Bearer
-3. Verify the token using `jwt.verify` with the test secret
-4. Attach the verified payload to `req.user`
-5. Call `next()` so the route handler runs
-6. Return `401` in the catch block if verification fails for any reason
+- Node.js 18 or newer
+- npm
 
-Every failure — missing header, wrong scheme, expired token, tampered token, malformed string — must return the **same generic 401 response body**. No variation.
+## Install and configure
 
----
+From this directory:
 
-## What is already provided
-
-You do **not** need to set up routing, signing, or tests. Everything except the middleware is ready.
-
-| File | What it does | Edit? |
-|---|---|---|
-| `src/app.js` | Express app with public and protected routes wired up | ❌ No |
-| `src/middleware/requireAuth.js` | **Your task** — currently calls `next()` unconditionally | ✅ Yes |
-| `src/utils/jwt.js` | Signs test tokens using the test secret | ❌ No |
-| `tests/run.js` | Automated test suite — runs 4 scenarios against your middleware | ❌ No |
-| `.env.example` | Contains the test `JWT_SECRET` to use | ❌ No |
-
-> **No database. No bcrypt.** This assignment is JWT verification only.
-
----
-
-## Routes in the app
-
-| Route | Protected? | What it does |
-|---|---|---|
-| `POST /auth/login` | ❌ Public | Signs and returns a test JWT |
-| `GET /profile` | ✅ Protected | Returns `req.user.sub` — only works if requireAuth passes |
-| `GET /posts/my` | ✅ Protected | Returns `req.user.sub` — only works if requireAuth passes |
-| `POST /posts` | ✅ Protected | Returns `req.user.sub` — only works if requireAuth passes |
-
----
-
-## Setup
-
-**Step 1 — Copy the `.env.example` to `.env`:**
-
-```bash
-cp .env.example .env
-```
-
-The `.env.example` already has the correct test secret. Do not change it — the test suite uses the same secret to sign tokens.
-
-**Step 2 — Install dependencies:**
-
-```bash
+```powershell
 npm install
+Copy-Item .env.example .env
 ```
 
-**Step 3 — Start the server:**
+Edit `.env` before starting the server. `DATABASE_URL` defaults to a local SQLite database. Replace `COOKIE_SECRET` with a unique random value of at least 32 characters; generate one with:
 
-```bash
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Do not commit `.env` or use the example secret outside local development.
+
+## Prisma database setup
+
+The starter did not contain a Prisma schema or user model. This project adds a minimal SQLite `User` model with a unique email and a `passwordHash`; it does not store plaintext passwords.
+
+```powershell
+npm run db:generate
+npm run db:push
+```
+
+SQLite's local schema is synchronized with `prisma db push`; no migration history existed in this starter.
+
+Create or update a local account using a bcrypt-hashed password. Set these values only in your local shell:
+
+```powershell
+$env:SEED_USER_EMAIL = "sam@example.com"
+$env:SEED_USER_PASSWORD = Read-Host "Choose a local test password"
+npm run db:seed
+Remove-Item Env:SEED_USER_EMAIL
+Remove-Item Env:SEED_USER_PASSWORD
+```
+
+The seed command hashes the password with bcrypt before storing it. Re-running it updates the password for that email.
+
+## Start the server
+
+```powershell
 npm start
 ```
 
-Server runs on `http://localhost:3000`.
+The API listens on `http://localhost:5000` by default; set `PORT` in `.env` to change it. For development with automatic restarts, run `npm run dev`.
 
----
+## Authentication endpoints
 
-## Your task — implement `requireAuth`
+### `POST /auth/login`
 
-Open `src/middleware/requireAuth.js`. It currently looks like this:
-
-```js
-// TODO: Implement requireAuth middleware.
-module.exports = function requireAuth(req, res, next) {
-  next(); // ← stub — remove this and implement properly
-};
-```
-
-Replace it with a proper implementation. Here is the contract your middleware must fulfill:
-
-### Step 1 — Read the Authorization header
-
-```js
-const authHeader = req.headers.authorization ?? '';
-```
-
-Use `?? ''` so you never work with `undefined`.
-
-### Step 2 — Extract the Bearer token using a strict regex
-
-```js
-const match = /^Bearer ([^\s]+)$/i.exec(authHeader);
-const token = match ? match[1] : null;
-```
-
-The regex requires the `Bearer` prefix. If the header is absent, uses `Basic`, or has no token after `Bearer`, the result is `null`.
-
-### Step 3 — Return 401 if token is null
-
-```js
-if (!token) {
-  return res.status(401).json({
-    error: { code: 'AUTH_REQUIRED', message: 'Authentication required' },
-  });
-}
-```
-
-Always use `return` before `res.status(...)` — otherwise Express continues running the function.
-
-### Step 4 — Verify the token in a try block
-
-```js
-try {
-  const payload = jwt.verify(token, process.env.JWT_SECRET, {
-    algorithms: ['HS256'],
-  });
-  req.user = payload;   // attach verified identity
-  next();               // pass to route handler
-} catch (_error) {
-  return res.status(401).json({
-    error: { code: 'AUTH_REQUIRED', message: 'Authentication required' },
-  });
-}
-```
-
-- `jwt.verify` takes the token, the secret from env, and an explicit algorithm option
-- Set `req.user = payload` **inside the try block**, after verify returns — never before
-- The catch block must return the **same 401 body** as the null check above
-
----
-
-## Required 401 response format
-
-Every failure must return exactly this — same status, same body, every time:
+Request:
 
 ```json
 {
-  "error": {
-    "code": "AUTH_REQUIRED",
-    "message": "Authentication required"
+  "email": "sam@example.com",
+  "password": "your local test password"
+}
+```
+
+The email is trimmed and lowercased before lookup. Invalid input returns HTTP 400. Unknown email and incorrect password both return the same HTTP 401 response:
+
+```json
+{ "error": "Invalid email or password" }
+```
+
+Passwords must be between 1 and 72 UTF-8 bytes to avoid bcrypt's input truncation behavior.
+
+Successful login returns HTTP 200 and sets the signed `sid` cookie:
+
+```json
+{
+  "message": "Login successful",
+  "user": {
+    "id": "user_id",
+    "email": "sam@example.com"
   }
 }
 ```
 
----
+### `GET /auth/me`
 
-## Test manually with curl
+Send the login cookie. A valid session returns HTTP 200:
 
-**First, get a test token:**
-
-```bash
-curl -s -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"sub":"user-7"}'
+```json
+{
+  "user": {
+    "id": "user_id",
+    "email": "sam@example.com"
+  }
+}
 ```
 
-Response: `{ "token": "eyJhbGci..." }` — copy the token value.
+Missing, invalid, expired, or orphaned sessions return HTTP 401:
 
-**Use the token on a protected route (should return 200):**
-
-```bash
-curl -s -H "Authorization: Bearer <PASTE_TOKEN_HERE>" \
-  http://localhost:3000/profile
+```json
+{ "error": "Unauthorized" }
 ```
 
-Expected: `{ "userId": "user-7", "message": "Profile data" }`
+### `POST /auth/logout`
 
-**No token (should return 401):**
+Logout verifies the signed cookie, deletes its server-side session when present, and clears the cookie. It is idempotent and always returns HTTP 204.
 
-```bash
-curl -s http://localhost:3000/profile
+The existing `GET /profile`, `GET /posts/my`, and `POST /posts` routes are also protected using the same session middleware.
+
+## Cookie and session security
+
+The `sid` cookie is signed using `COOKIE_SECRET` and configured with `HttpOnly`, `SameSite=Lax`, `Path=/`, and a 24-hour max age. In production, `Secure` is enabled; clients send Secure cookies only over HTTPS. Local HTTP development uses `Secure=false`.
+
+The cookie contains only a random session identifier. Authentication checks its signature and resolves the identifier in a server-side store before loading the user from Prisma. Passwords are checked with asynchronous `bcrypt.compare`; public responses never include password hashes.
+
+The session store is an in-memory `Map`, suitable only for learning and a single local process. Sessions disappear on restart and are not shared across instances. Production deployments should use a shared, persistent, expiring store such as Redis.
+
+## Verify with curl
+
+After creating a seeded account, save the login cookie to a cookie jar:
+
+```powershell
+curl.exe -i -c cookies.txt -X POST http://localhost:5000/auth/login `
+  -H "Content-Type: application/json" `
+  -d '{"email":"sam@example.com","password":"your local test password"}'
 ```
 
-Expected: `{ "error": { "code": "AUTH_REQUIRED", "message": "Authentication required" } }`
+Use the cookie jar for the protected identity endpoint:
 
-**Wrong scheme (should return 401):**
-
-```bash
-curl -s -H "Authorization: Basic dXNlcjpwYXNz" http://localhost:3000/profile
+```powershell
+curl.exe -i -b cookies.txt http://localhost:5000/auth/me
 ```
 
-Expected: same 401 body
+Logout clears the cookie and invalidates the server-side session:
 
-**Bad/tampered token (should return 401):**
-
-```bash
-curl -s -H "Authorization: Bearer not.a.real.jwt" http://localhost:3000/profile
+```powershell
+curl.exe -i -b cookies.txt -c cookies.txt -X POST http://localhost:5000/auth/logout
 ```
 
-Expected: same 401 body
+Calling `/auth/me` again with the old cookie returns HTTP 401. In Postman, send the login request first and allow its cookie jar to retain `sid`; then call `/auth/me` and `/auth/logout` on the same host.
 
----
+## Tests
 
-## Run the automated tests
-
-```bash
+```powershell
 npm test
 ```
 
-The test suite checks four things:
-
-| Test | What it verifies |
-|---|---|
-| Test 1 | Missing `Authorization` header → `401 AUTH_REQUIRED` |
-| Test 2 | Invalid / tampered token → `401 AUTH_REQUIRED` |
-| Test 3 | Valid token → `req.user` is set with the verified payload |
-| Test 4 | Protected route with valid token → `200` from route handler |
-
-When your implementation is correct, all tests pass:
-
-```
-Results: 13 passed, 0 failed
-All tests passed! ✓
-```
-
----
-
-## Security rules — do not break these
-
-| Rule | Why |
-|---|---|
-| Use `jwt.verify`, not `jwt.decode` | `jwt.decode` does no signature check — any string passes |
-| Set `req.user` only inside the try block after verify | Setting it before means failed tokens still attach identity |
-| Same 401 body for every failure | Distinguishing errors gives attackers free information |
-| Read `JWT_SECRET` from `process.env` | Never hardcode secrets in source code |
-
----
-
-## Submission
-
-1. Fork or copy this starter into your own repository
-2. Implement `requireAuth` in `src/middleware/requireAuth.js`
-3. Run `npm test` and confirm all tests pass
-4. Commit your changes on a feature branch
-5. Push the branch and open a pull request
-6. Submit the pull request link on the platform
+The integration test creates a unique temporary SQLite database and exercises login success and failures, cookie attributes and signing, protected identity and existing routes, missing/tampered/expired sessions, logout invalidation, repeated logout, and the production `Secure` cookie flag. It removes its temporary database when complete.

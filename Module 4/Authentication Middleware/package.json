@@ -1,19 +1,28 @@
 {
   "name": "lu51-auth-middleware-starter",
   "version": "1.0.0",
-  "description": "Starter project: implement requireAuth middleware for LU 51",
+  "description": "Express session authentication with Prisma, bcrypt, and signed cookies",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "node prisma/seed.js",
     "test": "node tests/run.js"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2"
+    "express": "^4.19.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "prisma": "^6.19.0"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
   }
 }

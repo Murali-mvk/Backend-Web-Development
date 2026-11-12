@@ -1,42 +1,47 @@
 require('dotenv').config();
+
+const cookieParser = require('cookie-parser');
 const express = require('express');
+const { COOKIE_SECRET } = require('./config/cookie.config');
 const requireAuth = require('./middleware/requireAuth');
-const { signToken } = require('./utils/jwt');
+const authRoutes = require('./routes/auth.routes');
 
 const app = express();
-app.use(express.json());
 
-// ─── Public routes ───────────────────────────────────────────────────────────
-// POST /auth/login — signs a test token; no real credential check in this LU
-app.post('/auth/login', (req, res) => {
-  const sub = req.body.sub || 'user-1';
-  const token = signToken({ sub });
-  return res.status(200).json({ token });
-});
-
-// ─── Protected routes ─────────────────────────────────────────────────────────
-// TODO: requireAuth is applied here but currently does nothing.
-// Once you implement it, these routes will only respond to authenticated requests.
+app.use(express.json({ limit: '16kb' }));
+app.use(cookieParser(COOKIE_SECRET));
+app.use('/auth', authRoutes);
 
 app.get('/profile', requireAuth, (req, res) => {
-  return res.status(200).json({ userId: req.user.sub, message: 'Profile data' });
+  return res.status(200).json({
+    userId: req.user.sub,
+    message: 'Profile data',
+  });
 });
 
 app.get('/posts/my', requireAuth, (req, res) => {
-  return res.status(200).json({ userId: req.user.sub, posts: [] });
+  return res.status(200).json({
+    userId: req.user.sub,
+    posts: [],
+  });
 });
 
 app.post('/posts', requireAuth, (req, res) => {
-  return res.status(201).json({ userId: req.user.sub, message: 'Post created' });
+  return res.status(201).json({
+    userId: req.user.sub,
+    message: 'Post created',
+  });
 });
 
-// ─── Error handler ────────────────────────────────────────────────────────────
 app.use((error, req, res, next) => {
-  console.error(error.message);
-  return res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
-});
+  if (error.type === 'entity.parse.failed' || error.type === 'entity.too.large') {
+    return res.status(error.type === 'entity.too.large' ? 413 : 400).json({
+      error: 'Invalid request',
+    });
+  }
 
-const port = Number(process.env.PORT || 3000);
-app.listen(port, () => console.log(`Auth middleware starter listening on ${port}`));
+  console.error('Request failed:', error);
+  return res.status(500).json({ error: 'Internal server error' });
+});
 
 module.exports = app;
